@@ -3,7 +3,7 @@
 class Path(object):
     @staticmethod
     def get_path(datatype):
-        data_path = './raw-data/'
+        data_path = './raw-data/test/'
         FILENAMES = {
             'patient_status' : data_path + 'Patient_Status.csv',
             'updrs2' : data_path + 'MDS_UPDRS_Part_II__Patient_Questionnaire.csv',

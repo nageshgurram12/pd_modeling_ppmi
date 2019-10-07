@@ -5,6 +5,7 @@ import pandas as pd
 import os
 
 from mypath import Path
+from custom_symbols import SYMBOLS
 
 data_path = os.path.dirname(__file__) + '/../../raw-data/'
 
@@ -15,59 +16,31 @@ FILENAMES = {
         'merged_data' : data_path + 'final_merged_data.csv'
         }
 
-# Remove unncessary cols from UPDRS2 file
-# TODO: Add comments for why we're adding 
-UPDRS2_DROP_COLS = ['REC_ID',
-                    'F_STATUS',
-                    'INFODT',
-                    'ORIG_ENTRY',
-                    'LAST_UPDATE',
-                    'QUERY',
-                    'SITE_APRV',
-                    'PAG_NAME']
+UPDRS2_DROP_COLS = SYMBOLS.UPDRS2_DROP_COLS
+UPDRS3_DROP_COLS = SYMBOLS.UPDRS3_DROP_COLS
 
-UPDRS3_DROP_COLS = ['REC_ID',
-                    'F_STATUS',
-                    'INFODT',
-                    'EXAMTM',
-                    'ORIG_ENTRY',
-                    'LAST_UPDATE',
-                    'QUERY',
-                    'SITE_APRV',
-                    'PAG_NAME',
-                    'CMEDTM', # TODO: these two?
-                    'EXAMTM'
-                    ]
-
-PAT_COL = "PATNO" # Patient col in data files
-EVENT_COL = "EVENT_ID" # Event id col in data files (sc, bl, ..)
+PAT_COL = SYMBOLS.PAT_COL # Patient col in data files
+EVENT_COL = SYMBOLS.EVENT_COL # Event id col in data files (sc, bl, ..)
 
 # If cohorts are not passed from input, then take these for analysis
-COHORTS = ['PD', 'GENPD', 'REGPD'] 
+COHORTS = SYMBOLS.COHORTS
 
 # Encode events as a sequence of numbers
-ENCODING = {
-        EVENT_COL : {"BL": 0, "V01": 1, "V02": 2, "V03": 3, "V04": 4, \
-        "V05": 5, "V06": 6, "V07": 7, "V08": 8, "V09": 9, "V10": 10, \
-        "V11": 11, "V12": 12, "V13": 13,"V14": 14, "V15" : 15, "V16" : 16,
-        "ST": -1}
-        }
+ENCODING = SYMBOLS.ENCODING
 
 # Do one hot encoding for these variables
-CATEGORICAL_VARS = ['NUPSOURC', 'DYSKPRES', 'DYSKIRAT', 'PD_MED_USE', 
-                    'ON_OFF_DOSE', 'IS_TREATED','ENROLL_CAT']
+CATEGORICAL_VARS = SYMBOLS.CATEGORICAL_VARS
 
-LAST_EVENT_IX = 16
+TOTAL_VISITS = SYMBOLS.TOTAL_VISITS
         
 # TODO: check whether correct or not ?
-UPDRS3_NA_COLS_FILL = {
-        'ANNUAL_TIME_BTW_DOSE_NUPDRS' : 0,
-        'ON_OFF_DOSE' : 0,
-        'PD_MED_USE' : 0
-        }
+UPDRS3_NA_COLS_FILL = SYMBOLS.UPDRS3_NA_COLS_FILL
 
 #Fill other columns with some arbitrary number not in data
-FILL_NA = -1
+FILL_NA = SYMBOLS.FILL_NA
+
+# Ambulatory score features
+AMBUL_FEATURES = SYMBOLS.AMBUL_FEATURES
 
 '''
 If Baseline event is not present and Screening event exists, then 
@@ -165,7 +138,14 @@ def generate_updrs_subsets(data, features):
 
     # Return new data
     return data
-    
+
+'''
+Generate ambulatary score
+'''
+def generate_ambul_score(data):
+    data.loc[:, 'AMBUL_SCORE'] = data.filter(item=SYMBOLS.AMBUL_FEATURES)
+    return data
+
 def preprocess_data(**kwargs):
     if 'cohorts' in kwargs:
         cohorts = kwargs['cohorts']
@@ -202,6 +182,9 @@ def preprocess_data(**kwargs):
     # Add new columns for sum of scores for updrs2,3 and combined
     data = generate_updrs_subsets(data=data, features=[])
     
+    if 'pred_type' in kwargs and kwargs['pred_type'] == 'AMBUL_SCORE':
+        data = generate_ambul_score(data)
+    
     # Fill NA with passed param value
     if 'fill_na' in kwargs:
         fill_na = kwargs['fill_na']
@@ -216,7 +199,7 @@ def preprocess_data(**kwargs):
     final_datatype = 'merged'
     if 'pad_missing_visits' in kwargs and kwargs['pad_missing_visits']:
         multi_index = pd.MultiIndex.from_product([data[PAT_COL].values, \
-        range(0, LAST_EVENT_IX+1)], names=[PAT_COL, EVENT_COL])
+        range(0, TOTAL_VISITS)], names=[PAT_COL, EVENT_COL])
         data = data.set_index([PAT_COL, EVENT_COL]).reindex(multi_index).reset_index()
         final_datatype = 'merged_and_padded'
     
