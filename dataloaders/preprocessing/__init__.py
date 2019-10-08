@@ -1,20 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import pandas as pd
-#import numpy as np
-import os
 
 from mypath import Path
 from custom_symbols import SYMBOLS
-
-data_path = os.path.dirname(__file__) + '/../../raw-data/'
-
-FILENAMES = {
-        'patient_status' : data_path + 'Patient_Status.csv',
-        'updrs2' : data_path + 'MDS_UPDRS_Part_II__Patient_Questionnaire.csv',
-        'updrs3' : data_path + 'MDS_UPDRS_Part_III.csv',
-        'merged_data' : data_path + 'final_merged_data.csv'
-        }
 
 UPDRS2_DROP_COLS = SYMBOLS.UPDRS2_DROP_COLS
 UPDRS3_DROP_COLS = SYMBOLS.UPDRS3_DROP_COLS
@@ -118,23 +107,24 @@ def preprocess_patient_status(cohorts):
     
     # Get patients who has cohort name
     #patient_df['ENROLL_CAT'].notnull()
-    pat_coh = patient_df['ENROLL_CAT'].isin(cohorts) 
-    return patient_df.loc[pat_coh, (PAT_COL, 'ENROLL_CAT')]
+    pat_coh = patient_df[SYMBOLS.ENROLL_COL].isin(cohorts) 
+    return patient_df.loc[pat_coh, (PAT_COL, SYMBOLS.ENROLL_COL)]
     
 # Generate UPDRS_I, UPDRS_II, and UPDRS_III
 def generate_updrs_subsets(data, features):
     # set features
-    new_features = ["UPDRS_II", "UPDRS_III", "UPDRS_II_AND_III", "TOTAL"]
+    new_features = SYMBOLS.DERIVABLE_TOTALS
     for feature in new_features:
         if feature not in features:
             features.append(feature)
 
     # Sum UPDRS subsets
     # data.loc[:, "UPDRS_I"] = data.filter(regex="NP1.*").sum(axis=1)
-    data.loc[:, "UPDRS_II"] = data.filter(regex="NP2.*").sum(axis=1)
-    data.loc[:, "UPDRS_III"] = data.filter(regex="NP3.*").sum(axis=1)
-    data.loc[:, "UPDRS_II_AND_III"] = data["UPDRS_II"] + data["UPDRS_III"]
-    data.loc[:, "TOTAL"] = data["UPDRS_II"] + data["UPDRS_III"]
+    data.loc[:, SYMBOLS.TOTAL_UPDRS2] = data.filter(regex="NP2.*").sum(axis=1)
+    data.loc[:, SYMBOLS.TOTAL_UPDRS3] = data.filter(regex="NP3.*").sum(axis=1)
+    data.loc[:, SYMBOLS.TOTAL_UPDRS2_3] = data[SYMBOLS.TOTAL_UPDRS2] + \
+                                        data[SYMBOLS.TOTAL_UPDRS3]
+    #data.loc[:, "TOTAL"] = data["UPDRS_II"] + data["UPDRS_III"]
 
     # Return new data
     return data
@@ -143,7 +133,7 @@ def generate_updrs_subsets(data, features):
 Generate ambulatary score
 '''
 def generate_ambul_score(data):
-    data.loc[:, 'AMBUL_SCORE'] = data.filter(item=SYMBOLS.AMBUL_FEATURES)
+    data.loc[:, SYMBOLS.AMBUL_SCORE] = data.filter(item=SYMBOLS.AMBUL_FEATURES)
     return data
 
 def preprocess_data(**kwargs):
@@ -162,7 +152,7 @@ def preprocess_data(**kwargs):
     data = data.merge(patient_status, on=PAT_COL, how="outer")
     
     # filter patients based on passed cohorts
-    data = data[data['ENROLL_CAT'].isin(cohorts)]
+    data = data[data[SYMBOLS.ENROLL_COL].isin(cohorts)]
     
     # Drop duplicates
     data.drop_duplicates(subset=[PAT_COL, EVENT_COL], keep="first", inplace=True)
@@ -182,7 +172,7 @@ def preprocess_data(**kwargs):
     # Add new columns for sum of scores for updrs2,3 and combined
     data = generate_updrs_subsets(data=data, features=[])
     
-    if 'pred_type' in kwargs and kwargs['pred_type'] == 'AMBUL_SCORE':
+    if 'pred_type' in kwargs and kwargs['pred_type'] == SYMBOLS.AMBUL_SCORE:
         data = generate_ambul_score(data)
     
     # Fill NA with passed param value
@@ -198,7 +188,7 @@ def preprocess_data(**kwargs):
     # Pad missing visits sequences with fill_na value
     final_datatype = 'merged'
     if 'pad_missing_visits' in kwargs and kwargs['pad_missing_visits']:
-        multi_index = pd.MultiIndex.from_product([data[PAT_COL].values, \
+        multi_index = pd.MultiIndex.from_product([data[PAT_COL].unique(), \
         range(0, TOTAL_VISITS)], names=[PAT_COL, EVENT_COL])
         data = data.set_index([PAT_COL, EVENT_COL]).reindex(multi_index).reset_index()
         final_datatype = 'merged_and_padded'

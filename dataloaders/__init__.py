@@ -13,7 +13,7 @@ from custom_symbols import SYMBOLS
 def prepare_dataloaders(args):        
     final_file = Path.get_path('merged_and_padded')
     if not os.path.exists(final_file):
-        preprocess_data(args.pred_type, pad_missing_visits=True)
+        preprocess_data(pred_type=args.pred_type, pad_missing_visits=True)
         
     data = pd.read_csv(final_file)
     # Create patient ids array

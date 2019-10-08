@@ -6,6 +6,7 @@ sym_dict = {
         "PAT_COL" : "PATNO",
         "EVENT_COL" : "EVENT_ID",
         
+        "ENROLL_COL" : "ENROLL_CAT", 
         # Remove unncessary cols from UPDRS2 file
         # TODO: Add comments for why we're adding 
         "UPDRS2_DROP_COLS" : ['REC_ID',
@@ -56,7 +57,19 @@ sym_dict = {
         
         "FILL_NA" : -1,
         
-        "AMBUL_FEATURES" : ["NP2WALK", "NP2FREZ", "NP3GAIT", "NP3FRZGT", "NP3PSTBL"]
+        # Ambulatory score features
+        "AMBUL_FEATURES" : ["NP2WALK", "NP2FREZ", "NP3GAIT", "NP3FRZGT", "NP3PSTBL"],
+        
+        "AMBUL_SCORE" : "AMBUL_SCORE",
+        
+        "TOTAL_UPDRS2" : "TOTAL_UPDRS2",
+        
+        "TOTAL_UPDRS3" : "TOTAL_UPDRS3",
+        
+        "TOTAL_UPDRS2_3" : "TOTAL_UPDRS2_3",
+        
+        # Derivable totals
+        "DERIVABLE_TOTALS" : ["TOTAL_UPDRS2", "TOTAL_UPDRS3", "TOTAL_UPDRS2_3"]
         }
 
 SYMBOLS = namedtuple("SYMBOLS", sym_dict.keys())(*sym_dict.values())
