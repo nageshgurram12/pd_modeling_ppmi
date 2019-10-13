@@ -16,9 +16,8 @@ class PPMIDataset(data.Dataset):
         self.data = data
         
         # set input size, output size in args
-        args.input_size = (data.shape[1]-2) # patno, event id are removed
-        if type(args.pred_type) is str:
-            args.output_size = 1
+        args.input_size = (data.shape[1]) # patno, event id are removed
+        args.output_size = len(args.pred_types)
             
         # command args
         self.args = args
@@ -29,27 +28,35 @@ class PPMIDataset(data.Dataset):
         
         # get all visits for the patient
         all_visits = self.data.loc[self.data[SYMBOLS.PAT_COL] == pat_id]
-        all_visits.drop(columns=[SYMBOLS.PAT_COL, SYMBOLS.EVENT_COL], inplace=True)
+        #all_visits = all_visits.drop(columns=[SYMBOLS.PAT_COL, SYMBOLS.EVENT_COL])
 
         # take the seq len of target and type of target(like UPDRS3, AMBUL score etc..)
         pred_seq_len = self.args.pred_seq_len
-        pred_type = self.args.pred_type
+        pred_types = self.args.pred_types
         total_visits = all_visits.shape[0]
         
         # Do some data validations
         if total_visits != SYMBOLS.TOTAL_VISITS:
             raise ValueError
 
-        if not(pred_seq_len <= all_visits.shape[0] and pred_type in all_visits.columns):
+        # if pred seq length has smaller then entire thorw error
+        if not(pred_seq_len <= all_visits.shape[0]):
+            raise ValueError
+            
+        # If any prediction var is missing in data, then throw error
+        if not(all(pred_var in all_visits.columns for pred_var in pred_types)):
             raise ValueError
         
         # Take input sequence by removing pred sequence from all visits
-        input_seq = all_visits.iloc[:(total_visits-pred_seq_len), :].values
-        input_seq = torch.tensor(input_seq, dtype=torch.float)
+        input_seq_len = total_visits-pred_seq_len
+        input_seq_filter = all_visits[SYMBOLS.EVENT_COL] < input_seq_len
+        input_seq = all_visits.loc[input_seq_filter]
+        input_seq = torch.tensor(input_seq.values, dtype=torch.float)
         
-        # Take prediction (output) score sequence
-        pred_seq = all_visits.iloc[(total_visits-pred_seq_len):, :][pred_type].values
-        pred_seq = torch.tensor(pred_seq, dtype=torch.float)
+        # Take prediction (output) score sequence of only target outcomes
+        pred_seq_filter = all_visits[SYMBOLS.EVENT_COL] >= input_seq_len
+        pred_seq = all_visits[pred_types].loc[pred_seq_filter]
+        pred_seq = torch.tensor(pred_seq.values, dtype=torch.float)
 
         return input_seq, pred_seq
         

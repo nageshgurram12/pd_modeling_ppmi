@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
+import numpy as np
 
 '''
 Encoder returns context vector and hidden states at each timestep
@@ -48,21 +49,33 @@ class Decoder(nn.Module):
         self.linear = nn.Linear(hidden_size, output_size)
     
     '''
-    prev_score - previous output prediction (0 for initial step)
-    hidden - previous time step hidden state
+    input:
+        prev_score - previous output prediction (0 for initial step)
+        [batch, output]
+        hidden - previous time step hidden state
+        [batch, seq, output] but seq is 1
+    
+    return:
+        pred_score - prediction for current step in seq
+        [batch, output]
+        
+        hidden - current step generated hidden state
+        [batch, seq, output]
     '''
     def forward(self, prev_score, hidden):
-        prev_score = prev_score.unsqueeze(1)
+        prev_score = prev_score.unsqueeze(1) # to make it seq
         output, hidden = self.gru(prev_score, hidden)
-        pred_score = self.linear(output.squeeze(1))
+        # convert again to [batch, feature]
+        pred_score = self.linear(output.squeeze(1)) 
         
         return pred_score, hidden
     
     def initHidden(self):
         return torch.zeros(1, 1, self.hidden_size)
     
-class Model():
+class Model(nn.Module):
     def __init__(self, args):
+        super().__init__()
         
         self.hidden_size = args.hidden_size
         if 'input_size' in args:
@@ -71,6 +84,8 @@ class Model():
         if 'output_size' in args:
             self.output_size = args.output_size # output size at out_seq[t]
         self.batch_size = args.batch_size
+        
+        self.teacher_force_ratio = args.teacher_force_ratio
 
         # Instantiate decoder and encoder        
         self.encoder = Encoder(self.input_size, self.hidden_size)
@@ -79,14 +94,15 @@ class Model():
     '''
     pats_visit_seqs - batch of sequence of visits 
     [batch, in_seq_len, features]
-    prediction_scores - batch of sequence of prediction scores 
+    target_scores - batch of sequence of prediction scores 
     [batch, pred_seq_len, score]
     '''
-    def train(self, pats_visit_seqs, prediction_scores):
-        pred_seq_len = prediction_scores.shape[1]
+    def forward(self, pats_visit_seqs, target_scores):
+        pred_seq_len = target_scores.shape[1]
         
         #tensor to store decoder outputs
-        outputs = torch.zeros(pred_seq_len, self.batch_size, self.output_size)
+        outputs = torch.zeros(self.batch_size, pred_seq_len, self.output_size, \
+                              requires_grad=False)
         
         encoder_outs, last_out = self.encoder(pats_visit_seqs)
         
@@ -94,8 +110,15 @@ class Model():
         prev_score = torch.zeros(self.batch_size, self.output_size)
         hidden = last_out # initial hidden state for decoder
         
+        # Iterate over sequence and predict targets at each step
         for t in range(0, pred_seq_len):
             output, hidden = self.decoder(prev_score, hidden)
-            outputs[t] = prev_score = output
             
+            # detach from history as inp, otherwise variable modification error comes
+            outputs[:, t, :] = prev_score = output
+            
+            # change prev_score to original score based on teacher force ratio
+            if np.random.random() < self.teacher_force_ratio:
+                prev_score = target_scores[:, t, :]
+                
         return outputs
