@@ -36,8 +36,9 @@ class PPMIDataset(data.Dataset):
         total_visits = all_visits.shape[0]
         
         # Do some data validations
-        if total_visits != SYMBOLS.TOTAL_VISITS:
-            raise ValueError
+        if self.args.missing_val_strategy != SYMBOLS.MISSING_VAL_STRATEGIES.REMOVE:
+            if total_visits != SYMBOLS.TOTAL_VISITS:
+                raise ValueError
 
         # if pred seq length has smaller then entire thorw error
         if not(pred_seq_len <= all_visits.shape[0]):
@@ -47,20 +48,22 @@ class PPMIDataset(data.Dataset):
         if not(all(pred_var in all_visits.columns for pred_var in pred_types)):
             raise ValueError
         
-        # Take input sequence by removing pred sequence from all visits
+        # Take input sequence by removing pred sequence
         input_seq_len = total_visits-pred_seq_len
-        input_seq_filter = all_visits[SYMBOLS.EVENT_COL] < input_seq_len
-        input_seq = all_visits.loc[input_seq_filter]
-        input_seq = torch.tensor(input_seq.values, dtype=torch.float)
+        
+        #input_seq_filter = all_visits[SYMBOLS.EVENT_COL] <= input_seq_len
+        input_seq = all_visits.iloc[:input_seq_len]
+        input_seq = torch.tensor(input_seq.values, dtype=torch.float,
+                                 device= self.args.device)
         
         # Take prediction (output) score sequence of only target outcomes
-        pred_seq_filter = all_visits[SYMBOLS.EVENT_COL] >= input_seq_len
-        pred_seq = all_visits[pred_types].loc[pred_seq_filter]
-        pred_seq = torch.tensor(pred_seq.values, dtype=torch.float)
+        #pred_seq_filter = all_visits[SYMBOLS.EVENT_COL] > input_seq_len
+        pred_seq = all_visits[pred_types].iloc[input_seq_len:]
+        pred_seq = torch.tensor(pred_seq.values, dtype=torch.float,
+                                device= self.args.device)
 
         return input_seq, pred_seq
-        
-        
+            
     def __len__(self):
         return len(self.pat_ids)
         

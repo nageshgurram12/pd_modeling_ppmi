@@ -31,6 +31,9 @@ FILL_NA = SYMBOLS.FILL_NA
 # Ambulatory score features
 AMBUL_FEATURES = SYMBOLS.AMBUL_FEATURES
 
+#default missing val strategy
+DEFAULT_MISSING_VAL_STRATEGY = SYMBOLS.MISSING_VAL_STRATEGIES.REMOVE
+
 '''
 If Baseline event is not present and Screening event exists, then 
 change set SC as BL event
@@ -136,6 +139,50 @@ def generate_ambul_score(data):
     data.loc[:, SYMBOLS.AMBUL_SCORE] = data.filter(item=SYMBOLS.AMBUL_FEATURES)
     return data
 
+'''
+Handle missing val by supplied strategy
+'''
+def handle_missing_vals(data, kwargs):
+    miss_val_strategy = DEFAULT_MISSING_VAL_STRATEGY
+    if SYMBOLS.MISSING_VAL_STRATEGY in kwargs:
+        miss_val_strategy = kwargs[SYMBOLS.MISSING_VAL_STRATEGY]
+    
+    # change the filename of generated data based on missing val strategy
+    final_data_type = 'merged'
+    
+    # if missing val strategy is to remove the missig events,
+    # then add a new column for gap between events
+    if miss_val_strategy == SYMBOLS.MISSING_VAL_STRATEGIES.REMOVE:
+        pat_ids = data[SYMBOLS.PAT_COL].unique()
+        drop_pat_ids = []
+        for pat_id in pat_ids:
+            patient_data = data.loc[ data[SYMBOLS.PAT_COL] == pat_id ]
+            event_ids = patient_data[SYMBOLS.EVENT_COL]
+            # if patient doesn't have atleast some events, skip 
+            if len(event_ids) < SYMBOLS.MIN_EVENTS:
+                drop_pat_ids.append(pat_id)
+            
+            # create a new column for gap between events/visits
+            event_ids = event_ids.sort_values()
+            event_gaps = event_ids.diff()
+            event_gaps.iloc[0] = 0 # dont keep NA 
+            data.loc[ data[SYMBOLS.PAT_COL] == pat_id, \
+            SYMBOLS.EVENT_GAP_COL] = event_gaps
+        
+        final_data_type += '_na_removed'
+        data.drop(data.loc[data[SYMBOLS.PAT_COL].isin(drop_pat_ids)].index, \
+                           inplace=True)
+        
+    # Pad missing visits sequences with fill_na value
+    elif miss_val_strategy == SYMBOLS.MISSING_VAL_STRATEGIES.PAD:
+        multi_index = pd.MultiIndex.from_product([data[PAT_COL].unique(), \
+        range(0, TOTAL_VISITS)], names=[PAT_COL, EVENT_COL])
+        data = data.set_index([PAT_COL, EVENT_COL]).reindex(multi_index).reset_index()
+        final_data_type = '_padded'
+        
+    return final_data_type
+        
+    
 def preprocess_data(**kwargs):
     if 'cohorts' in kwargs:
         cohorts = kwargs['cohorts']
@@ -172,7 +219,7 @@ def preprocess_data(**kwargs):
     # Add new columns for sum of scores for updrs2,3 and combined
     data = generate_updrs_subsets(data=data, features=[])
     
-    if 'pred_type' in kwargs and kwargs['pred_type'] == SYMBOLS.AMBUL_SCORE:
+    if 'pred_types' in kwargs and SYMBOLS.AMBUL_SCORE in kwargs['pred_types']:
         data = generate_ambul_score(data)
     
     # Fill NA with passed param value
@@ -185,17 +232,12 @@ def preprocess_data(**kwargs):
     data[CATEGORICAL_VARS] = data[CATEGORICAL_VARS].astype('category')
     data = pd.get_dummies(data, columns=CATEGORICAL_VARS)
         
-    # Pad missing visits sequences with fill_na value
-    final_datatype = 'merged'
-    if 'pad_missing_visits' in kwargs and kwargs['pad_missing_visits']:
-        multi_index = pd.MultiIndex.from_product([data[PAT_COL].unique(), \
-        range(0, TOTAL_VISITS)], names=[PAT_COL, EVENT_COL])
-        data = data.set_index([PAT_COL, EVENT_COL]).reindex(multi_index).reset_index()
-        final_datatype = 'merged_and_padded'
+    # handle missing data
+    final_datatype = handle_missing_vals(data, kwargs)
     
     data = data.fillna(fill_na)
     
     data.to_csv( Path.get_path(final_datatype), index=False)
 
 if __name__ == "__main__":
-    preprocess_data(pad_missing_visits=True)
+    preprocess_data()

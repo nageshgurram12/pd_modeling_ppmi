@@ -69,7 +69,28 @@ sym_dict = {
         "TOTAL_UPDRS2_3" : "TOTAL_UPDRS2_3",
         
         # Derivable totals
-        "DERIVABLE_TOTALS" : ["TOTAL_UPDRS2", "TOTAL_UPDRS3", "TOTAL_UPDRS2_3"]
+        "DERIVABLE_TOTALS" : ["TOTAL_UPDRS2", "TOTAL_UPDRS3", "TOTAL_UPDRS2_3"],
+        
+        # MISSING VAL REPLACING STRATEGIES
+        "MISSING_VAL_STRATEGIES" : namedtuple("MISSING_VAL_STRATEGIES",
+                                              ("REMOVE", "PAD")) \
+                                    ("REMOVE_NA_EVENTS","PAD_WITH_NA"),
+                                    
+        "MISSING_VAL_STRATEGY" : "MISSING_VAL_STRATEGY",
+        
+        # If missing strategy is removing NA events, then patient should have atleast 
+        # this many to be considered in samples
+        "MIN_EVENTS" : 8,
+        
+        "EVENT_GAP_COL" : "EVENT_GAP",
+        
+        # prediction varaibles
+        
+        # data files we have
+        "DATA_TYPES" : namedtuple("DATA_TYPES", 
+                                  ("MERGED_PADDED", "MERGED_NA_REMOVED")) \
+                                  ("merged_padded", "merged_na_removed")
+                                  
         }
 
 SYMBOLS = namedtuple("SYMBOLS", sym_dict.keys())(*sym_dict.values())

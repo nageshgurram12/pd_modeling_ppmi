@@ -91,6 +91,8 @@ class Model(nn.Module):
         self.encoder = Encoder(self.input_size, self.hidden_size)
         self.decoder = Decoder(self.hidden_size, self.output_size)
         
+        self.device = args.device
+        
     '''
     pats_visit_seqs - batch of sequence of visits 
     [batch, in_seq_len, features]
@@ -100,14 +102,16 @@ class Model(nn.Module):
     def forward(self, pats_visit_seqs, target_scores):
         pred_seq_len = target_scores.shape[1]
         
+        
         #tensor to store decoder outputs
         outputs = torch.zeros(self.batch_size, pred_seq_len, self.output_size, \
-                              requires_grad=False)
+                              device=self.device)
         
         encoder_outs, last_out = self.encoder(pats_visit_seqs)
         
         # For decoder first cell, prev pred score is 0
-        prev_score = torch.zeros(self.batch_size, self.output_size)
+        prev_score = torch.zeros(self.batch_size, self.output_size, \
+                                 device=self.device)
         hidden = last_out # initial hidden state for decoder
         
         # Iterate over sequence and predict targets at each step
