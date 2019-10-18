@@ -32,7 +32,7 @@ sym_dict = {
                     ],
                               
         # If cohorts are not passed from input, then take these for analysis
-        "COHORTS" : ['PD', 'GENPD', 'REGPD'],
+        "COHORTS" : ['PD'],
         
         # Encode events as a sequence of numbers
         "ENCODING" : {
@@ -73,10 +73,13 @@ sym_dict = {
         
         # MISSING VAL REPLACING STRATEGIES
         "MISSING_VAL_STRATEGIES" : namedtuple("MISSING_VAL_STRATEGIES",
-                                              ("REMOVE", "PAD")) \
-                                    ("REMOVE_NA_EVENTS","PAD_WITH_NA"),
+                                ("REMOVE", "PAD", "MA")) \
+                                ("REMOVE_NA_EVENTS","PAD_WITH_NA", "MOVING_AVG"),
                                     
-        "MISSING_VAL_STRATEGY" : "MISSING_VAL_STRATEGY",
+        "MISSING_VAL_STRATEGY" : "missing_val_strategy",
+        
+        # Moving avg width
+        "MVG_AVG_WIDTH" : 4,
         
         # If missing strategy is removing NA events, then patient should have atleast 
         # this many to be considered in samples
@@ -84,12 +87,18 @@ sym_dict = {
         
         "EVENT_GAP_COL" : "EVENT_GAP",
         
+        "UPDRS2" : "UPDRS2",
+        
+        "UPDRS3" : "UPDRS3",
+        
         # prediction varaibles
         
         # data files we have
         "DATA_TYPES" : namedtuple("DATA_TYPES", 
-                                  ("MERGED_PADDED", "MERGED_NA_REMOVED")) \
-                                  ("merged_padded", "merged_na_removed")
+                                  ("MERGED_PADDED", "MERGED_NA_REMOVED", \
+                                   "MERGED_MA")) \
+                                  ("merged_padded", "merged_na_removed", \
+                                   "merged_pad_mvg_avg")
                                   
         }
 

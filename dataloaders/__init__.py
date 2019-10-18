@@ -70,12 +70,17 @@ def prepare_dataloaders(args):
 Get the file path based on missing val strategy and others
 '''
 def get_final_file_path(args):
+    '''
+    final_file = Path.get_path(SYMBOLS.DATA_TYPES.MERGED_PADDED)
     if args.missing_val_strategy == SYMBOLS.MISSING_VAL_STRATEGIES.REMOVE:
         final_file = Path.get_path(SYMBOLS.DATA_TYPES.MERGED_NA_REMOVED)
     elif args.missing_val_strategy == SYMBOLS.MISSING_VAL_STRATEGIES.PAD:
         final_file = Path.get_path(SYMBOLS.DATA_TYPES.MERGED_PADDED)
-        
-    return final_file
+    elif args.missing_val_strategy == SYMBOLS.MISSING_VAL_STRATEGIES.MA:
+        final_file = Path.get_path(SYMBOLS.DATA_TYPES.MERGED_MA)
+    '''
+    return Path.get_preprocessed(args.preprocessed_file_name)
+    #return final_file
 
 '''
 This is to match the API for pad_seq 

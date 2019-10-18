@@ -136,7 +136,8 @@ def generate_updrs_subsets(data, features):
 Generate ambulatary score
 '''
 def generate_ambul_score(data):
-    data.loc[:, SYMBOLS.AMBUL_SCORE] = data.filter(item=SYMBOLS.AMBUL_FEATURES)
+    data.loc[:, SYMBOLS.AMBUL_SCORE] = data.filter(items=SYMBOLS.AMBUL_FEATURES). \
+                                        sum(axis=1)
     return data
 
 '''
@@ -148,7 +149,7 @@ def handle_missing_vals(data, kwargs):
         miss_val_strategy = kwargs[SYMBOLS.MISSING_VAL_STRATEGY]
     
     # change the filename of generated data based on missing val strategy
-    final_data_type = 'merged'
+    final_data_type = ''
     
     # if missing val strategy is to remove the missig events,
     # then add a new column for gap between events
@@ -180,23 +181,38 @@ def handle_missing_vals(data, kwargs):
         data = data.set_index([PAT_COL, EVENT_COL]).reindex(multi_index).reset_index()
         final_data_type = '_padded'
         
-    return final_data_type
+    return (final_data_type, data)
         
     
 def preprocess_data(**kwargs):
+    final_data_file_name = 'final_'
+    
     if 'cohorts' in kwargs:
         cohorts = kwargs['cohorts']
     else:
         cohorts = COHORTS
+    final_data_file_name += "_".join(cohorts)
     
-    # Preprocess the datafiles
-    patient_status = preprocess_patient_status(cohorts)
-    updrs2 = preprocess_updrs2()
-    updrs3 = preprocess_updrs3()
+    data_to_consider = kwargs['data_to_consider']
     
-    # merge updrs2, 3 files into one
-    data = updrs2.merge(updrs3, on=[PAT_COL, EVENT_COL], how="outer")
-    data = data.merge(patient_status, on=PAT_COL, how="outer")
+    # Preprocess the datafiles and merge into one
+    data = preprocess_patient_status(cohorts)
+    
+    if SYMBOLS.UPDRS2 in data_to_consider:
+        updrs2 = preprocess_updrs2()
+        merge_on = [PAT_COL]
+        if EVENT_COL in data.columns:
+            merge_on.append(EVENT_COL)
+        data = data.merge(updrs2, on=merge_on, how="outer")
+        final_data_file_name += "_updrs2"
+    
+    if SYMBOLS.UPDRS3 in data_to_consider:
+        updrs3 = preprocess_updrs3()
+        merge_on = [PAT_COL]
+        if EVENT_COL in data.columns:
+            merge_on.append(EVENT_COL)
+        data = data.merge(updrs3, on=merge_on, how="outer")
+        final_data_file_name += "_updrs3"
     
     # filter patients based on passed cohorts
     data = data[data[SYMBOLS.ENROLL_COL].isin(cohorts)]
@@ -219,8 +235,8 @@ def preprocess_data(**kwargs):
     # Add new columns for sum of scores for updrs2,3 and combined
     data = generate_updrs_subsets(data=data, features=[])
     
-    if 'pred_types' in kwargs and SYMBOLS.AMBUL_SCORE in kwargs['pred_types']:
-        data = generate_ambul_score(data)
+    #if 'pred_types' in kwargs and SYMBOLS.AMBUL_SCORE in kwargs['pred_types']:
+    data = generate_ambul_score(data)
     
     # Fill NA with passed param value
     if 'fill_na' in kwargs:
@@ -229,15 +245,22 @@ def preprocess_data(**kwargs):
         fill_na = FILL_NA
         
     # Do one hot encoding for categorical vars
-    data[CATEGORICAL_VARS] = data[CATEGORICAL_VARS].astype('category')
-    data = pd.get_dummies(data, columns=CATEGORICAL_VARS)
+    cat_vars = [cat_var for cat_var in CATEGORICAL_VARS if cat_var in data.columns]
+    data[cat_vars] = data[cat_vars].astype('category')
+    data = pd.get_dummies(data, columns=cat_vars)
         
     # handle missing data
-    final_datatype = handle_missing_vals(data, kwargs)
+    datatype, data = handle_missing_vals(data, kwargs)
+    final_data_file_name += datatype
     
     data = data.fillna(fill_na)
     
-    data.to_csv( Path.get_path(final_datatype), index=False)
+    data.to_csv( Path.get_preprocessed(final_data_file_name), index=False)
 
 if __name__ == "__main__":
-    preprocess_data()
+    args = {
+            SYMBOLS.MISSING_VAL_STRATEGY : SYMBOLS.MISSING_VAL_STRATEGIES.PAD,
+            "cohorts" : SYMBOLS.COHORTS,
+            "data_to_consider" : [SYMBOLS.UPDRS2, SYMBOLS.UPDRS3]
+            }
+    preprocess_data(**args)

@@ -27,20 +27,11 @@ class Trainer(object):
         
         # get model
         self.model = Model(args)
-        
-        # define optimizer
-        self.optimizer = torch.optim.Adam(self.model.parameters())
-        
-        # define loss - as these are scores define MSE 
-        self.criterion = torch.nn.MSELoss()
 
     def train(self):
-        # set model to train mode
-        self.model.train()
         #torch.autograd.set_detect_anomaly(True)
         
         loss_val = 0
-        self.model.teacher_force_ratio = self.args.teacher_force_ratio
         
         # input, target of shape [batch, seq, feature]
         for samples in self.train_loader:
@@ -50,38 +41,16 @@ class Trainer(object):
                                              ip_seq_lengths, batch_first=True)
             else:
                 (input_seq, target_seq) = samples
-                
-            # clear gradients
-            self.model.zero_grad()
             
             # feed forward the inputs to model and target
-            pred_seq = self.model(input_seq, target_seq)
-            
-            # If target is filled with missing value, then ignore them while 
-            # calculating loss
-            missing_index = np.where(target_seq == SYMBOLS.FILL_NA)
-            pred_seq[missing_index] = 0
-            target_seq[missing_index] = 0
-            
-            # calculate loss
-            loss = self.criterion(pred_seq, target_seq)
-            #loss.requires_grad(True)
-            
-            # calculate gradients
-            loss.backward()
-            
-            # update model parameters
-            self.optimizer.step()
+            loss = self.model.train(input_seq, target_seq)
             
             loss_val += loss.item()
             
         # return total loss per seq
         return loss_val / len(self.train_loader)
             
-    def validate_test(self, data_loader, type='val'):
-        # set model to eval mode
-        self.model.eval()
-        
+    def validate_test(self, data_loader, type='val'):        
         loss_val = 0
         total_samples = len(data_loader)
         
@@ -95,38 +64,30 @@ class Trainer(object):
             self.model.teacher_force_ratio = 0
             iter = 0
             
-        # each sample is  of shape [batch, seq, feature]
-        for samples in data_loader:
-            if len(samples) == 4:
-                (input_seq, ip_seq_lengths, target_seq, tg_seq_lengths) = samples
-                input_seq = torch.nn.utils.rnn.pack_padded_sequence(input_seq, \
-                                             ip_seq_lengths, batch_first=True)
-            else:
-                (input_seq, target_seq) = samples
-                
-                # feed forward the inputs to model and target
-                pred_seq = self.model(input_seq, target_seq)
-                
-                if iter % 10 == 0 and type == 'test':
-                    self.store_results(results, input_seq, target_seq, pred_seq)
-                
-                # If target is filled with missing value, then ignore them while 
-                # calculating loss
-                missing_index = np.where(target_seq == SYMBOLS.FILL_NA)
-                pred_seq[missing_index] = 0
-                target_seq[missing_index] = 0
-            
-                # calculate loss
-                loss = self.criterion(pred_seq, target_seq)
-                
-                loss_val += loss.item()
-                iter += 1
+            # each sample is  of shape [batch, seq, feature]
+            for samples in data_loader:
+                if len(samples) == 4:
+                    (input_seq, ip_seq_lengths, target_seq, tg_seq_lengths) = samples
+                    input_seq = torch.nn.utils.rnn.pack_padded_sequence(input_seq, \
+                                                 ip_seq_lengths, batch_first=True)
+                else:
+                    (input_seq, target_seq) = samples
+                    
+                    # feed forward the inputs to model and target
+                    loss, pred_seq = self.model.val_or_test(input_seq, \
+                                                            target_seq, type)
+                    
+                    if type == 'test':
+                        self.store_results(results, input_seq, target_seq, pred_seq)
+                    
+                    loss_val += loss.item()
+                    iter += 1
         
         # write new results to the file
         if type == 'test':
             results.to_csv(self.args.results_file)
         
-        return loss_val / len(self.val_loader)
+        return loss_val / len(data_loader)
     
     '''
     Create a results file to store predictions on test
@@ -151,7 +112,7 @@ class Trainer(object):
         pat_ids = input_seq[:, 0, 0].numpy()
         visit_num = input_seq_len = input_seq.shape[1]
         target_seq = target_seq.detach().numpy(); 
-        pred_seq = pred_seq.detach().numpy()
+        #pred_seq = pred_seq.detach().numpy()
         
         for pat_ix in range(len(pat_ids)):
             pat_id = int(pat_ids[pat_ix])
@@ -170,7 +131,7 @@ class Trainer(object):
 def main():
     parser = argparse.ArgumentParser(description="PD Modeling")
     
-    parser.add_argument('--val-split', type=float, default=0.2,
+    parser.add_argument('--val-split', type=float, default=0,
                         help="Validation split (num patients ratio)")
     
     parser.add_argument('--test-split', type=float, default=0.1,
@@ -181,10 +142,10 @@ def main():
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
     
-    parser.add_argument('--batch-size', type=int, default=4,
+    parser.add_argument('--batch-size', type=int, default=16,
                         help='Batch size')
     
-    parser.add_argument('--pred-seq-len', type=int, default=4,
+    parser.add_argument('--pred-seq-len', type=int, default=3,
                         help='Prediction sequence length for test')
     
     parser.add_argument('--pred-types', type=str, default=SYMBOLS.TOTAL_UPDRS3,
@@ -201,12 +162,16 @@ def main():
                         default='./results/test_results.csv',
                         help="Write val/test results to file")
     
-    parser.add_argument('--num-epochs', type=int, default=10,
+    parser.add_argument('--num-epochs', type=int, default=20,
                         help="Number of epochs")
     
     parser.add_argument('--missing-val-strategy', type=str,
                         default=SYMBOLS.MISSING_VAL_STRATEGIES.PAD,
                         help="Specify missing val removal strategy")
+    
+    parser.add_argument('--preprocessed-file-name', type=str,
+                        default="final_PD_updrs2_updrs3_padded",
+                        help="Specify preprocessed file to train")
     
     args = parser.parse_args()
     
