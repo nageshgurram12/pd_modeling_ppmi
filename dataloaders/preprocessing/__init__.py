@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 
 import pandas as pd
+import numpy as np
+import re
 
 from mypath import Path
 from custom_symbols import SYMBOLS
 
 UPDRS2_DROP_COLS = SYMBOLS.UPDRS2_DROP_COLS
 UPDRS3_DROP_COLS = SYMBOLS.UPDRS3_DROP_COLS
+PD_FEAT_DROP_COLS = SYMBOLS.PD_FEAT_DROP_COLS
 
 PAT_COL = SYMBOLS.PAT_COL # Patient col in data files
 EVENT_COL = SYMBOLS.EVENT_COL # Event id col in data files (sc, bl, ..)
-
+ENROLL_COL = SYMBOLS.ENROLL_COL
+ON_OFF_DOSE = SYMBOLS.ON_OFF_DOSE
+EVENT_DATE_COL = SYMBOLS.EVENT_DATE_COL
 # If cohorts are not passed from input, then take these for analysis
 COHORTS = SYMBOLS.COHORTS
 
@@ -73,16 +78,24 @@ def set_treated_flag(df):
                 (pd.to_datetime(df["INFODT"], errors='coerce') >= st_date)].index
                 df.loc[treated_index,"IS_TREATED"] = 1      
 
-def preprocess_updrs3():
+'''
+These below methods preprocess the data from files
+'''
+def preprocess_updrs3(**kwargs):
     updrs3_file = Path.get_path('updrs3')
     updrs3_df = pd.read_csv(updrs3_file)
+    #updrs3_df.astype(dtype = SYMBOLS.UPDRS3_COL_DATATYPES, errors="ignore")
     
     # do this before dropping as its dependent on INFODT
     set_treated_flag(updrs3_df)
-    
+
+    if ON_OFF_DOSE in kwargs and kwargs[ON_OFF_DOSE] == "off":
+        updrs3_df = updrs3_df.loc[(updrs3_df['PAG_NAME'] != 'NUPDRS3A') & \
+                              (updrs3_df[ON_OFF_DOSE] != 2), :]
     # Drop unnecessary cols
     updrs3_df.drop(columns=UPDRS3_DROP_COLS, inplace=True)
-    
+    # rename col 
+    updrs3_df.rename(columns={EVENT_DATE_COL: EVENT_DATE_COL+"_U3"}, inplace=True)
     # Merge sc into bl
     replace_sc_with_bl(updrs3_df)
     
@@ -97,22 +110,59 @@ def preprocess_updrs2():
 
     # Drop unnecessary cols
     updrs2_df.drop(columns=UPDRS2_DROP_COLS, inplace=True)
+    updrs2_df.rename(columns={EVENT_DATE_COL: EVENT_DATE_COL+"_U2"}, inplace=True)
     
     # Merge sc into bl
     replace_sc_with_bl(updrs2_df)
     
-    return updrs2_df
-    
+    return updrs2_df  
 
 def preprocess_patient_status(cohorts):
     patient_file =  Path.get_path('patient_status')
     patient_df = pd.read_csv(patient_file)
     
-    # Get patients who has cohort name
+    # Get patients who is in passed cohorts
     #patient_df['ENROLL_CAT'].notnull()
-    pat_coh = patient_df[SYMBOLS.ENROLL_COL].isin(cohorts) 
-    return patient_df.loc[pat_coh, (PAT_COL, SYMBOLS.ENROLL_COL)]
+    pat_coh = patient_df[ENROLL_COL].isin(cohorts) 
+    patient_df = patient_df.loc[pat_coh, (PAT_COL, ENROLL_COL)]
     
+    #create has pd column
+    patient_df.loc[:, "HAS_PD"] = 0
+    patient_df.loc[(patient_df[ENROLL_COL] == "PD") | \
+            (patient_df[ENROLL_COL] == "GENPD") | \
+        (patient_df[ENROLL_COL] == "REGPD"), "HAS_PD"] = 1
+    
+    return patient_df
+
+def preprocess_pd_features():
+    pd_features_file =  Path.get_path('pd_features')
+    pd_features_df = pd.read_csv(pd_features_file)
+    
+    pd_features_df.drop(columns=SYMBOLS.PD_FEAT_DROP_COLS, inplace=True)
+    pd_features_df.rename(columns={EVENT_DATE_COL: EVENT_DATE_COL+"_PF"}, \
+                          inplace=True)
+    
+    # merge SXMO, SXYEAR cols (Symptom month, year) into one
+    SXMO = "SXMO"; SXYEAR = "SXYEAR"
+    # TODO: replace missing values
+    pd_features_df[SXMO] = pd_features_df[SXMO].fillna(1)
+    pd_features_df[SXYEAR] = pd_features_df[SXYEAR].fillna(2010)
+    pd_features_df.loc[:, SYMBOLS.FSYM_COL] = pd_features_df[[SXMO, SXYEAR]] \
+            .apply(lambda x: "/".join(map(str,map(int,x))), axis=1)
+                                
+    pd_features_df.drop(columns=[SXMO, SXYEAR], inplace=True)
+    # Merge sc into bl
+    replace_sc_with_bl(pd_features_df)
+    
+    return pd_features_df
+
+def preprocess_demographics():
+    demograph_file = Path.get_path('demographics')
+    demograph_df = pd.read_csv(demograph_file, dtype=SYMBOLS.DEMO_COL_DATATYPES)
+    demograph_df.drop(columns=SYMBOLS.DEMOGRAPH_DROP_COLS, inplace=True)
+    
+    return demograph_df
+
 # Generate UPDRS_I, UPDRS_II, and UPDRS_III
 def generate_updrs_subsets(data, features):
     # set features
@@ -136,8 +186,8 @@ def generate_updrs_subsets(data, features):
 Generate ambulatary score
 '''
 def generate_ambul_score(data):
-    data.loc[:, SYMBOLS.AMBUL_SCORE] = data.filter(items=SYMBOLS.AMBUL_FEATURES). \
-                                        sum(axis=1)
+    data.loc[:, SYMBOLS.AMBUL_SCORE] = data.filter(items=SYMBOLS.AMBUL_FEATURES)\
+                                        .sum(axis=1)
     return data
 
 '''
@@ -160,8 +210,8 @@ def handle_missing_vals(data, kwargs):
             patient_data = data.loc[ data[SYMBOLS.PAT_COL] == pat_id ]
             event_ids = patient_data[SYMBOLS.EVENT_COL]
             # if patient doesn't have atleast some events, skip 
-            if len(event_ids) < SYMBOLS.MIN_EVENTS:
-                drop_pat_ids.append(pat_id)
+            #if len(event_ids) < SYMBOLS.MIN_EVENTS:
+            #    drop_pat_ids.append(pat_id)
             
             # create a new column for gap between events/visits
             event_ids = event_ids.sort_values()
@@ -178,12 +228,113 @@ def handle_missing_vals(data, kwargs):
     elif miss_val_strategy == SYMBOLS.MISSING_VAL_STRATEGIES.PAD:
         multi_index = pd.MultiIndex.from_product([data[PAT_COL].unique(), \
         range(0, TOTAL_VISITS)], names=[PAT_COL, EVENT_COL])
-        data = data.set_index([PAT_COL, EVENT_COL]).reindex(multi_index).reset_index()
+        data = data.set_index([PAT_COL, EVENT_COL]).reindex(multi_index) \
+                .reset_index()
         final_data_type = '_padded'
         
     return (final_data_type, data)
         
+'''
+Preprocess individual data files
+'''
+def preprocess_individual_datafiles(data, datafiles, final_data_file_name, **kwargs):
+    def merge_on(data):
+        merge_on = [PAT_COL]
+        if EVENT_COL in data.columns:
+            merge_on.append(EVENT_COL)
+        return merge_on
     
+    if SYMBOLS.UPDRS2 in datafiles:
+        updrs2 = preprocess_updrs2()
+        data = data.merge(updrs2, on=merge_on(data), how="outer")
+        final_data_file_name += "_updrs2"
+    
+    if SYMBOLS.UPDRS3 in datafiles:
+        updrs3 = preprocess_updrs3(**kwargs)
+        data = data.merge(updrs3, on=merge_on(data), how="outer")
+        final_data_file_name += "_updrs3"
+        
+    if SYMBOLS.PD_FEAT in datafiles:
+        pd_features = preprocess_pd_features()
+        data = data.merge(pd_features, on=merge_on(data), how="outer")
+        final_data_file_name += "_pdfeat"
+        
+    if SYMBOLS.DEMOGRAPH in datafiles:
+        demographics = preprocess_demographics()
+        data = data.merge(demographics, on=[PAT_COL], how="outer")
+        final_data_file_name += "_demo"
+        
+    return data, final_data_file_name
+
+'''
+Create features like age, time from BL etc..
+'''
+def create_time_features(data):
+    # Drop rows with no date time
+    #data = data[data[EVENT_DATE_COL].notnull()]
+    
+    # Create derived cols
+    data.loc[:, SYMBOLS.AGE_COL] = -1
+    data.loc[:, SYMBOLS.TIME_FROM_BL_COL] = -1
+    data.loc[:, SYMBOLS.TIME_SINCE_DIAG_COL] = -1
+    data.loc[:, SYMBOLS.TIME_SINCE_FSYM_COL] = -1
+    
+    # Convert dates to date times
+    all_infodt_cols = list(filter(lambda col: col.startswith(EVENT_DATE_COL), \
+                             data.columns))
+    data[all_infodt_cols] = data[all_infodt_cols].fillna(0)
+    for infodt_col in all_infodt_cols:
+        data.loc[:, infodt_col] = \
+                    pd.to_datetime(data[infodt_col])
+    data.loc[:, SYMBOLS.BRDY_COL] = pd.to_datetime(data[SYMBOLS.BRDY_COL])
+    data.loc[:, SYMBOLS.PDDIAG_COL] = pd.to_datetime(data[SYMBOLS.PDDIAG_COL])
+    data.loc[:, SYMBOLS.FSYM_COL] = pd.to_datetime(data[SYMBOLS.FSYM_COL])
+    
+    def convert_to_years(x):
+        return round((x / np.timedelta64(1, 'D')) / 365 , 2)
+    
+    '''
+    Get any defined INFODT col date to cal other 
+    derived features
+    '''
+    def get_infodt(pat_record):
+        for infodt_col in all_infodt_cols:
+            if pat_record[infodt_col] != 0:
+                return pat_record[infodt_col]
+            
+    # Set time from baseline for each event 
+    for index, pat_record in data.iterrows():
+        pat_id = pat_record[PAT_COL]
+        event_id = pat_record[EVENT_COL]
+        # date of the event
+        now_date =  pat_record[all_infodt_cols].values.max()
+        # date of the BL event
+        baseline_date = (data.loc[(data[PAT_COL] == pat_id) & \
+                        (data[EVENT_COL] == 0), all_infodt_cols]).values.max()
+        data.loc[(data[PAT_COL] == pat_id) & \
+                 (data[EVENT_COL] == event_id), SYMBOLS.TIME_FROM_BL_COL] = \
+                 round((now_date - baseline_date).days/365, 2);
+    
+
+    # Set age in years, years from diagnosis, and years from first symptom
+    data.loc[:, SYMBOLS.AGE_COL] = \
+    (data[all_infodt_cols].max(axis=1) - data[SYMBOLS.BRDY_COL]) \
+    .apply(convert_to_years)
+    
+    data.loc[data["HAS_PD"] == 1, SYMBOLS.TIME_SINCE_DIAG_COL] = \
+        (data.loc[data["HAS_PD"] == 1, all_infodt_cols].max(axis=1) - \
+        data.loc[data["HAS_PD"] == 1, SYMBOLS.PDDIAG_COL]).apply(convert_to_years)
+    
+    data.loc[data["HAS_PD"] == 1, SYMBOLS.TIME_SINCE_FSYM_COL] = \
+        (data.loc[data["HAS_PD"] == 1, all_infodt_cols].max(axis=1) - \
+         data.loc[data["HAS_PD"] == 1, SYMBOLS.FSYM_COL]).apply(convert_to_years)
+
+    #TODO: drop the date cols?
+    data.drop(columns=[SYMBOLS.BRDY_COL, SYMBOLS.PDDIAG_COL, \
+                       SYMBOLS.FSYM_COL] + all_infodt_cols, inplace=True)
+    # Return data
+    return data
+
 def preprocess_data(**kwargs):
     final_data_file_name = 'final_'
     
@@ -197,25 +348,12 @@ def preprocess_data(**kwargs):
     
     # Preprocess the datafiles and merge into one
     data = preprocess_patient_status(cohorts)
+    data, final_data_file_name =  preprocess_individual_datafiles(data, \
+                                data_to_consider, final_data_file_name, **kwargs)
     
-    if SYMBOLS.UPDRS2 in data_to_consider:
-        updrs2 = preprocess_updrs2()
-        merge_on = [PAT_COL]
-        if EVENT_COL in data.columns:
-            merge_on.append(EVENT_COL)
-        data = data.merge(updrs2, on=merge_on, how="outer")
-        final_data_file_name += "_updrs2"
-    
-    if SYMBOLS.UPDRS3 in data_to_consider:
-        updrs3 = preprocess_updrs3()
-        merge_on = [PAT_COL]
-        if EVENT_COL in data.columns:
-            merge_on.append(EVENT_COL)
-        data = data.merge(updrs3, on=merge_on, how="outer")
-        final_data_file_name += "_updrs3"
     
     # filter patients based on passed cohorts
-    data = data[data[SYMBOLS.ENROLL_COL].isin(cohorts)]
+    data = data[data[ENROLL_COL].isin(cohorts)]
     
     # Drop duplicates
     data.drop_duplicates(subset=[PAT_COL, EVENT_COL], keep="first", inplace=True)
@@ -232,6 +370,9 @@ def preprocess_data(**kwargs):
     data.replace(ENCODING, inplace=True)
     data[EVENT_COL] = pd.to_numeric(data[EVENT_COL])
     
+    # Create time feats like age, time from BL etc.
+    data = create_time_features(data)
+    
     # Add new columns for sum of scores for updrs2,3 and combined
     data = generate_updrs_subsets(data=data, features=[])
     
@@ -245,7 +386,10 @@ def preprocess_data(**kwargs):
         fill_na = FILL_NA
         
     # Do one hot encoding for categorical vars
-    cat_vars = [cat_var for cat_var in CATEGORICAL_VARS if cat_var in data.columns]
+    cat_vars = []
+    for col in data.columns:
+        if data[col].dtype.name == 'category' or col in CATEGORICAL_VARS:
+            cat_vars.append(col)
     data[cat_vars] = data[cat_vars].astype('category')
     data = pd.get_dummies(data, columns=cat_vars)
         
@@ -261,6 +405,8 @@ if __name__ == "__main__":
     args = {
             SYMBOLS.MISSING_VAL_STRATEGY : SYMBOLS.MISSING_VAL_STRATEGIES.PAD,
             "cohorts" : SYMBOLS.COHORTS,
-            "data_to_consider" : [SYMBOLS.UPDRS2, SYMBOLS.UPDRS3]
+            ON_OFF_DOSE : "off",
+            "data_to_consider" : [SYMBOLS.UPDRS2, SYMBOLS.UPDRS3, \
+                                  SYMBOLS.PD_FEAT, SYMBOLS.DEMOGRAPH]
             }
     preprocess_data(**args)

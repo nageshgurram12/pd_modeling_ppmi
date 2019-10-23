@@ -2,14 +2,20 @@
 import os
 
 class Path(object):
+    subdir = '/raw-data/'
+    
     @staticmethod
     def get_path(datatype, mode='r'):
-        data_path = os.path.dirname(__file__) + '/raw-data/'
+        data_path = os.path.dirname(__file__) + Path.subdir
         
         FILENAMES = {
             'patient_status' : data_path + 'Patient_Status.csv',
             'updrs2' : data_path + 'MDS_UPDRS_Part_II__Patient_Questionnaire.csv',
             'updrs3' : data_path + 'MDS_UPDRS_Part_III.csv',
+            'pd_features' : data_path + 'PD_Features.csv',
+            'demographics' : data_path + 'Screening___Demographics.csv',
+            
+            # unused
             'merged' : data_path + 'final_merged.csv',
             'merged_padded' : data_path + 'final_merged_padded.csv',
             'merged_na_removed' : data_path + 'final_merged_na_removed.csv',
@@ -25,7 +31,7 @@ class Path(object):
             
     @staticmethod
     def get_preprocessed(filename):
-        data_path = os.path.dirname(__file__) + '/raw-data/preprocessed/'
+        data_path = os.path.dirname(__file__) + Path.subdir + 'preprocessed/'
         
         file_path = data_path + filename + ".csv"
         if not os.path.exists(file_path):

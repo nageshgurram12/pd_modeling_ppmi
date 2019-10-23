@@ -145,10 +145,10 @@ def main():
     parser.add_argument('--batch-size', type=int, default=16,
                         help='Batch size')
     
-    parser.add_argument('--pred-seq-len', type=int, default=3,
+    parser.add_argument('--pred-seq-len', type=int, default=1,
                         help='Prediction sequence length for test')
     
-    parser.add_argument('--pred-types', type=str, default=SYMBOLS.TOTAL_UPDRS3,
+    parser.add_argument('--pred-types', type=str, default=SYMBOLS.AMBUL_SCORE,
                         choices=[SYMBOLS.TOTAL_UPDRS3, SYMBOLS.AMBUL_SCORE],
                         help='Specify outcomes to predict (space seperated)')
     
@@ -170,8 +170,8 @@ def main():
                         help="Specify missing val removal strategy")
     
     parser.add_argument('--preprocessed-file-name', type=str,
-                        default="final_PD_updrs2_updrs3_padded",
-                        help="Specify preprocessed file to train")
+                        default="final_PD_updrs2_updrs3_pdfeat_demo_padded",
+                        help="Specify preprocessed file to train (no ext)")
     
     args = parser.parse_args()
     
