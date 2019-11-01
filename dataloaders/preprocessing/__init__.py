@@ -37,7 +37,7 @@ FILL_NA = SYMBOLS.FILL_NA
 AMBUL_FEATURES = SYMBOLS.AMBUL_FEATURES
 
 #default missing val strategy
-DEFAULT_MISSING_VAL_STRATEGY = SYMBOLS.MISSING_VAL_STRATEGIES.REMOVE
+DEFAULT_MISSING_VAL_STRATEGY = SYMBOLS.MISSING_VAL_STRATEGIES.DN
 
 '''
 If Baseline event is not present and Screening event exists, then 
@@ -83,7 +83,7 @@ These below methods preprocess the data from files
 '''
 def preprocess_updrs3(**kwargs):
     updrs3_file = Path.get_path('updrs3')
-    updrs3_df = pd.read_csv(updrs3_file)
+    updrs3_df = pd.read_csv(updrs3_file, dtype = SYMBOLS.UPDRS3_COL_DATATYPES);
     #updrs3_df.astype(dtype = SYMBOLS.UPDRS3_COL_DATATYPES, errors="ignore")
     
     # do this before dropping as its dependent on INFODT
@@ -106,8 +106,9 @@ def preprocess_updrs3(**kwargs):
 
 def preprocess_updrs2():
     updrs2_file = Path.get_path('updrs2')
-    updrs2_df = pd.read_csv(updrs2_file)
-
+    updrs2_df = pd.read_csv(updrs2_file, dtype = SYMBOLS.UPDRS2_COL_DATATYPES)
+    #updrs2_df.astype(dtype = SYMBOLS.UPDRS2_COL_DATATYPES, errors="ignore")
+    
     # Drop unnecessary cols
     updrs2_df.drop(columns=UPDRS2_DROP_COLS, inplace=True)
     updrs2_df.rename(columns={EVENT_DATE_COL: EVENT_DATE_COL+"_U2"}, inplace=True)
@@ -136,7 +137,9 @@ def preprocess_patient_status(cohorts):
 
 def preprocess_pd_features():
     pd_features_file =  Path.get_path('pd_features')
-    pd_features_df = pd.read_csv(pd_features_file)
+    pd_features_df = pd.read_csv(pd_features_file, \
+                                 dtype=SYMBOLS.PD_FEAT_COL_DATATYPES)
+    #pd_features_df.astype(dtype = SYMBOLS.PD_FEAT_COL_DATATYPES, errors="ignore")
     
     pd_features_df.drop(columns=SYMBOLS.PD_FEAT_DROP_COLS, inplace=True)
     pd_features_df.rename(columns={EVENT_DATE_COL: EVENT_DATE_COL+"_PF"}, \
@@ -201,6 +204,10 @@ def handle_missing_vals(data, kwargs):
     # change the filename of generated data based on missing val strategy
     final_data_type = ''
     
+    # do nothing
+    if miss_val_strategy == SYMBOLS.MISSING_VAL_STRATEGIES.DN:
+        return final_data_type, data
+    
     # if missing val strategy is to remove the missig events,
     # then add a new column for gap between events
     if miss_val_strategy == SYMBOLS.MISSING_VAL_STRATEGIES.REMOVE:
@@ -237,7 +244,8 @@ def handle_missing_vals(data, kwargs):
 '''
 Preprocess individual data files
 '''
-def preprocess_individual_datafiles(data, datafiles, final_data_file_name, **kwargs):
+def preprocess_individual_datafiles(datafiles, \
+                                    final_data_file_name, **kwargs):
     def merge_on(data):
         merge_on = [PAT_COL]
         if EVENT_COL in data.columns:
@@ -245,8 +253,8 @@ def preprocess_individual_datafiles(data, datafiles, final_data_file_name, **kwa
         return merge_on
     
     if SYMBOLS.UPDRS2 in datafiles:
-        updrs2 = preprocess_updrs2()
-        data = data.merge(updrs2, on=merge_on(data), how="outer")
+        data = preprocess_updrs2()
+        #data = datamerge(updrs2, on=merge_on(data), how="outer")
         final_data_file_name += "_updrs2"
     
     if SYMBOLS.UPDRS3 in datafiles:
@@ -263,6 +271,10 @@ def preprocess_individual_datafiles(data, datafiles, final_data_file_name, **kwa
         demographics = preprocess_demographics()
         data = data.merge(demographics, on=[PAT_COL], how="outer")
         final_data_file_name += "_demo"
+        
+    if SYMBOLS.PATIENT_STATUS in datafiles:
+        patient_status = preprocess_patient_status(kwargs['cohorts'])
+        data = data.merge(patient_status, on=[PAT_COL], how="outer")
         
     return data, final_data_file_name
 
@@ -321,6 +333,7 @@ def create_time_features(data):
     (data[all_infodt_cols].max(axis=1) - data[SYMBOLS.BRDY_COL]) \
     .apply(convert_to_years)
     
+    #TODO: these are not getting correct values
     data.loc[data["HAS_PD"] == 1, SYMBOLS.TIME_SINCE_DIAG_COL] = \
         (data.loc[data["HAS_PD"] == 1, all_infodt_cols].max(axis=1) - \
         data.loc[data["HAS_PD"] == 1, SYMBOLS.PDDIAG_COL]).apply(convert_to_years)
@@ -341,15 +354,16 @@ def preprocess_data(**kwargs):
     if 'cohorts' in kwargs:
         cohorts = kwargs['cohorts']
     else:
-        cohorts = COHORTS
+        kwargs['cohorts'] = COHORTS
+        
     final_data_file_name += "_".join(cohorts)
     
     data_to_consider = kwargs['data_to_consider']
     
     # Preprocess the datafiles and merge into one
-    data = preprocess_patient_status(cohorts)
-    data, final_data_file_name =  preprocess_individual_datafiles(data, \
-                                data_to_consider, final_data_file_name, **kwargs)
+    #data = preprocess_patient_status(cohorts)
+    data, final_data_file_name =  preprocess_individual_datafiles(data_to_consider,\
+                                  final_data_file_name, **kwargs)
     
     
     # filter patients based on passed cohorts
@@ -379,34 +393,37 @@ def preprocess_data(**kwargs):
     #if 'pred_types' in kwargs and SYMBOLS.AMBUL_SCORE in kwargs['pred_types']:
     data = generate_ambul_score(data)
     
+    # Do one hot encoding for categorical vars
+    cat_vars = []
+    for col in data.columns:
+        if (data[col].dtype.name == 'category') or (col in CATEGORICAL_VARS):
+            cat_vars.append(col)
+    data[cat_vars] = data[cat_vars].astype('category')
+    data = pd.get_dummies(data, columns=cat_vars)
+    
+    data = data.astype(SYMBOLS.INDEX_VAR_DTYPES)
+
     # Fill NA with passed param value
     if 'fill_na' in kwargs:
         fill_na = kwargs['fill_na']
     else:
         fill_na = FILL_NA
-        
-    # Do one hot encoding for categorical vars
-    cat_vars = []
-    for col in data.columns:
-        if data[col].dtype.name == 'category' or col in CATEGORICAL_VARS:
-            cat_vars.append(col)
-    data[cat_vars] = data[cat_vars].astype('category')
-    data = pd.get_dummies(data, columns=cat_vars)
-        
+    
     # handle missing data
     datatype, data = handle_missing_vals(data, kwargs)
     final_data_file_name += datatype
     
     data = data.fillna(fill_na)
     
-    data.to_csv( Path.get_preprocessed(final_data_file_name), index=False)
+    data.to_csv(Path.get_preprocessed(final_data_file_name), index=False)
 
 if __name__ == "__main__":
     args = {
-            SYMBOLS.MISSING_VAL_STRATEGY : SYMBOLS.MISSING_VAL_STRATEGIES.PAD,
+            SYMBOLS.MISSING_VAL_STRATEGY : SYMBOLS.MISSING_VAL_STRATEGIES.DN,
             "cohorts" : SYMBOLS.COHORTS,
             ON_OFF_DOSE : "off",
             "data_to_consider" : [SYMBOLS.UPDRS2, SYMBOLS.UPDRS3, \
+                                  SYMBOLS.PATIENT_STATUS, \
                                   SYMBOLS.PD_FEAT, SYMBOLS.DEMOGRAPH]
             }
     preprocess_data(**args)

@@ -19,7 +19,7 @@ def prepare_dataloaders(args):
                            SYMBOLS.MISSING_VAL_STRATEGY: args.missing_val_strategy}
         preprocess_data(**preprocess_args)
         
-    data = pd.read_csv(final_file)
+    data = pd.read_csv(final_file, dtype='float64')
     # Create patient ids array
     pat_ids = data[SYMBOLS.PAT_COL].unique()
     

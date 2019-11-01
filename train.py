@@ -52,7 +52,6 @@ class Trainer(object):
             
     def validate_test(self, data_loader, type='val'):        
         loss_val = 0
-        total_samples = len(data_loader)
         
         if type == 'test':
             results = self.create_results_df()
@@ -145,7 +144,7 @@ def main():
     parser.add_argument('--batch-size', type=int, default=16,
                         help='Batch size')
     
-    parser.add_argument('--pred-seq-len', type=int, default=1,
+    parser.add_argument('--pred-seq-len', type=int, default=2,
                         help='Prediction sequence length for test')
     
     parser.add_argument('--pred-types', type=str, default=SYMBOLS.AMBUL_SCORE,
@@ -162,7 +161,7 @@ def main():
                         default='./results/test_results.csv',
                         help="Write val/test results to file")
     
-    parser.add_argument('--num-epochs', type=int, default=20,
+    parser.add_argument('--num-epochs', type=int, default=5,
                         help="Number of epochs")
     
     parser.add_argument('--missing-val-strategy', type=str,
@@ -170,8 +169,8 @@ def main():
                         help="Specify missing val removal strategy")
     
     parser.add_argument('--preprocessed-file-name', type=str,
-                        default="final_PD_updrs2_updrs3_pdfeat_demo_padded",
-                        help="Specify preprocessed file to train (no ext)")
+                        default="final_PD_updrs2_updrs3_pdfeat_demo",
+                        help="Specify preprocessed file to train (no file ext)")
     
     args = parser.parse_args()
     

@@ -68,8 +68,6 @@ sym_dict = {
                                   "NP3RTALJ":np.float64,"NP3RTCON":np.float64,
                     "NHY":np.float64,"ANNUAL_TIME_BTW_DOSE_NUPDRS": np.float64,
                                   "DYSKPRES":"category","DYSKIRAT":"category",
-                                  "ON_OFF_DOSE":"category","PD_MED_USE":"category",
-                                  
                                   },
         
         # Drop some PD feature cols
@@ -87,7 +85,7 @@ sym_dict = {
                 "PDDXEST":'category',"DXTREMOR":'category',
                 "DXRIGID":'category',"DXBRADY":'category',"DXPOSINS":'category',
                 "DXOTHSX":'category',"DXOTHCM":'category',"DOMSIDE":"category",
-                "SXYEAR":"int64", "SXMO":"int8"
+                "SXYEAR":np.float64, "SXMO":np.float64
                 },
          
         # Drop demograph features
@@ -125,6 +123,8 @@ sym_dict = {
         
         "DEMOGRAPH" : "DEMOGRAPHICS",
         
+        "PATIENT_STATUS" : "PATIENT_STATUS",
+        
         # If cohorts are not passed from input, then take these for analysis
         "COHORTS" : ['PD'],
         
@@ -137,8 +137,12 @@ sym_dict = {
         },
         
         # Do one hot encoding for these variables
-        "CATEGORICAL_VARS" : ['HAS_PD', 
-                              'IS_TREATED','ENROLL_CAT'],
+        "CATEGORICAL_VARS" : ['HAS_PD', 'IS_TREATED', 'ENROLL_CAT',
+                              'ON_OFF_DOSE', 'PD_MED_USE'],
+        # indexing variables
+        "INDEX_VAR_DTYPES": {"PATNO" : np.float64,
+                       "EVENT_ID" : np.float64 # after decoding
+                       },
                               
         "TOTAL_VISITS" : 17,
         
@@ -167,8 +171,9 @@ sym_dict = {
         
         # MISSING VAL REPLACING STRATEGIES
         "MISSING_VAL_STRATEGIES" : namedtuple("MISSING_VAL_STRATEGIES",
-                                ("REMOVE", "PAD", "MA")) \
-                                ("REMOVE_NA_EVENTS","PAD_WITH_NA", "MOVING_AVG"),
+                                ("DN","REMOVE", "PAD", "MA")) \
+                                ("DO_NOTHING","REMOVE_NA_EVENTS","PAD_WITH_NA", \
+                                 "MOVING_AVG"),
                                     
         "MISSING_VAL_STRATEGY" : "missing_val_strategy",
         

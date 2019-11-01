@@ -53,13 +53,13 @@ class PPMIDataset(data.Dataset):
         
         #input_seq_filter = all_visits[SYMBOLS.EVENT_COL] <= input_seq_len
         input_seq = all_visits.iloc[:input_seq_len]
-        input_seq = torch.tensor(input_seq.values, dtype=torch.float,
+        input_seq = torch.tensor(input_seq.values, dtype=torch.float, \
                                  device= self.args.device)
         
         # Take prediction (output) score sequence of only target outcomes
         #pred_seq_filter = all_visits[SYMBOLS.EVENT_COL] > input_seq_len
         pred_seq = all_visits[pred_types].iloc[input_seq_len:]
-        pred_seq = torch.tensor(pred_seq.values, dtype=torch.float,
+        pred_seq = torch.tensor(pred_seq.values, dtype=torch.float, \
                                 device= self.args.device)
 
         return input_seq, pred_seq
